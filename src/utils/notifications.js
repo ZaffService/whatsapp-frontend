@@ -27,6 +27,11 @@ export const showSystemNotification = (title, options = {}) => {
   }
 }
 
+// Ajoutez cette fonction (alias de showSystemNotification)
+export const showNotification = (title, options = {}) => {
+  return showSystemNotification(title, options)
+}
+
 // Afficher un toast dans l'interface
 export const showToast = (message, type = 'info', duration = 3000) => {
   // Créer l'élément toast

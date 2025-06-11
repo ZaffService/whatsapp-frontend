@@ -142,6 +142,11 @@ class ApiService {
     return chat
   }
 
+  async getMessages(chatId) {
+    const chat = await this.getChatById(chatId)
+    return chat.messages || []
+  }
+
   // === NOTIFICATIONS ===
   async getNotifications() {
     return this.request('/notifications')
