@@ -31,7 +31,7 @@ class ApiService {
     }
   }
 
-  // Toutes vos méthodes API
+  // Toutes vos méthodes API existantes
   async getChats() {
     return this.request('/chats')
   }
@@ -78,6 +78,28 @@ class ApiService {
   async getStatus() {
     return this.request('/status')
   }
+
+  // FONCTION MANQUANTE - Ajoutez ceci
+  async updateUserStatus(userId, status) {
+    return this.request(`/users/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ lastSeen: status }),
+    })
+  }
 }
 
-export default new ApiService()
+const apiService = new ApiService()
+
+// Exportez toutes les fonctions nécessaires
+export const getChats = () => apiService.getChats()
+export const updateChat = (id, data) => apiService.updateChat(id, data)
+export const getUsers = () => apiService.getUsers()
+export const createUser = (userData) => apiService.createUser(userData)
+export const deleteUser = (id) => apiService.deleteUser(id)
+export const getNotifications = () => apiService.getNotifications()
+export const createNotification = (notification) => apiService.createNotification(notification)
+export const getCalls = () => apiService.getCalls()
+export const getStatus = () => apiService.getStatus()
+export const updateUserStatus = (userId, status) => apiService.updateUserStatus(userId, status)
+
+export default apiService
