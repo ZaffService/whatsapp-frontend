@@ -97,6 +97,11 @@ class ApiService {
   }
 
   // === MESSAGES ===
+  async getMessages(chatId) {
+    const chat = await this.getChatById(chatId)
+    return chat.messages || []
+  }
+
   async addMessage(chatId, message) {
     const chat = await this.getChatById(chatId)
     if (!chat.messages) chat.messages = []
@@ -140,11 +145,6 @@ class ApiService {
       }
     }
     return chat
-  }
-
-  async getMessages(chatId) {
-    const chat = await this.getChatById(chatId)
-    return chat.messages || []
   }
 
   // === NOTIFICATIONS ===
@@ -263,6 +263,7 @@ export const updateUserStatus = (userId, status) => apiService.updateUserStatus(
 export const deleteUser = (id) => apiService.deleteUser(id)
 
 // Messages
+export const getMessages = (chatId) => apiService.getMessages(chatId)
 export const addMessage = (chatId, message) => apiService.addMessage(chatId, message)
 export const deleteMessage = (chatId, messageId) => apiService.deleteMessage(chatId, messageId)
 export const updateMessage = (chatId, messageId, updates) => apiService.updateMessage(chatId, messageId, updates)
