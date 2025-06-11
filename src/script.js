@@ -1,1224 +1,283 @@
-import { getCurrentUser, createLoginForm, logout } from "./utils/auth.js"
-import { getChats, updateChat, addMessage, getMessages } from "./utils/api.js"
-import { showToast, showNotification, requestNotificationPermission } from "./utils/notifications.js"
-import { initializeAudioCall, initializeVideoCall } from "./utils/calls.js"
-import { initializeRealTimeSync } from "./utils/realtime.js"
-import { handleSendMessage } from "./utils/chat-handler.js"
-import { setupAudioRecorder } from "./utils/audio-recorder.js"
+// Import Tailwind CSS
+import './style.css'
 
-let chats = []
-let currentChat = null
-// Rendre currentChat accessible globalement pour les modules
-window.currentChat = null
-const realTimeInterval = null
-const typingTimeout = null
-
-document.addEventListener("DOMContentLoaded", () => {
-  console.log("Application démarrée")
-  initApp()
-})
-
-async function initApp() {
-  const mainContainer = document.getElementById("mainContainer")
-  const loginContainer = document.getElementById("loginContainer")
-
-  // Vérifier l'utilisateur connecté
-  const currentUser = getCurrentUser()
-
-  if (!currentUser) {
-    console.log("Aucun utilisateur connecté")
-    showLoginForm()
-  } else {
-    console.log("Utilisateur connecté:", currentUser.name)
-    showMainApp()
+// Application WhatsApp Clone
+class WhatsAppClone {
+  constructor() {
+    this.currentUser = null
+    this.chats = []
+    this.currentChat = null
+    this.init()
   }
 
-  function showLoginForm() {
-    mainContainer.style.display = "none"
-    loginContainer.style.display = "block"
-    loginContainer.innerHTML = ""
-
-    const loginForm = createLoginForm((user) => {
-      console.log("Connexion réussie pour:", user.name)
-      showMainApp()
-    })
-
-    loginContainer.appendChild(loginForm)
+  init() {
+    this.createApp()
+    this.loadMockData()
+    this.render()
   }
 
-  function showMainApp() {
-    loginContainer.style.display = "none"
-    mainContainer.style.display = "flex"
-    initMainInterface()
-  }
-}
-
-async function initMainInterface() {
-  try {
-    await loadChats()
-    setupEventListeners()
-    updateUserAvatar()
-    showWelcomeMessage()
-    initializeRealTimeSync(handleNewMessage, handleUserStatusUpdate)
-    startAutoRefresh() // Ajoutez cette ligne
-    setupAudioRecorder()
-    console.log("Interface principale initialisée")
-  } catch (error) {
-    console.error("Erreur initialisation:", error)
-    showToast("Erreur de chargement", "error")
-  }
-}
-
-async function loadChats() {
-  try {
-    chats = await getChats()
-    renderChatList()
-
-    // Si un chat est actuellement ouvert, rafraîchir ses messages
-    if (currentChat) {
-      const messages = await getMessages(currentChat.id)
-      renderMessages(messages)
-    }
-  } catch (error) {
-    console.error("Erreur chargement chats:", error)
-    showToast("Impossible de charger les conversations", "error")
-  }
-}
-
-function setupEventListeners() {
-  // Avatar utilisateur pour ouvrir le profil
-  const userAvatarButton = document.getElementById("userAvatarButton")
-  if (userAvatarButton) {
-    userAvatarButton.addEventListener("click", showProfile)
-  }
-
-  // Bouton retour du profil
-  const backToChats = document.getElementById("backToChats")
-  if (backToChats) {
-    backToChats.addEventListener("click", hideProfile)
-  }
-
-  // Bouton de déconnexion
-  const logoutButton = document.getElementById("logoutButton")
-  if (logoutButton) {
-    logoutButton.addEventListener("click", logout)
-  }
-
-  // Bouton retour
-  const backButton = document.getElementById("backButton")
-  if (backButton) {
-    backButton.addEventListener("click", handleBackButton)
-  }
-
-  // Input de message
-  setupMessageInput()
-
-  // Navigation
-  setupNavigation()
-
-  // Search
-  setupSearch()
-
-  // Filter tabs
-  setupFilterTabs()
-
-  // Call buttons
-  setupCallButtons()
-
-  // File attachment
-  setupFileAttachment()
-
-  // Responsive
-  window.addEventListener("resize", handleResize)
-
-  // Notifications permission
-  requestNotificationPermission()
-
-  // Voice recording
-  setupVoiceRecording()
-}
-
-function setupSearch() {
-  const searchInput = document.getElementById("searchInput")
-  if (searchInput) {
-    searchInput.addEventListener("input", (e) => {
-      const query = e.target.value.toLowerCase().trim()
-      filterChats(query)
-    })
-  }
-}
-
-function setupFilterTabs() {
-  const filterTabs = document.querySelectorAll(".filter-tab")
-  filterTabs.forEach((tab) => {
-    tab.addEventListener("click", () => {
-      // Remove active class from all tabs
-      filterTabs.forEach((t) => {
-        t.classList.remove("active", "bg-green-600", "text-white")
-        t.classList.add("text-gray-400")
-      })
-
-      // Add active class to clicked tab
-      tab.classList.add("active", "bg-green-600", "text-white")
-      tab.classList.remove("text-gray-400")
-
-      const filter = tab.dataset.filter
-      applyFilter(filter)
-    })
-  })
-}
-
-function setupCallButtons() {
-  const voiceCallBtn = document.getElementById("voiceCallBtn")
-  const videoCallBtn = document.getElementById("videoCallBtn")
-
-  if (voiceCallBtn) {
-    voiceCallBtn.addEventListener("click", () => {
-      if (currentChat) {
-        initializeAudioCall(currentChat)
-      }
-    })
-  }
-
-  if (videoCallBtn) {
-    videoCallBtn.addEventListener("click", () => {
-      if (currentChat) {
-        initializeVideoCall(currentChat)
-      }
-    })
-  }
-}
-
-function setupFileAttachment() {
-  const attachBtn = document.getElementById("attachBtn")
-  const fileInput = document.getElementById("fileInput")
-
-  if (attachBtn && fileInput) {
-    attachBtn.addEventListener("click", () => {
-      fileInput.click()
-    })
-
-    fileInput.addEventListener("change", handleFileUpload)
-  }
-}
-
-async function handleFileUpload(event) {
-  const file = event.target.files[0]
-  if (!file || !currentChat) return
-
-  try {
-    // Convert file to base64
-    const base64 = await fileToBase64(file)
-
-    const message = {
-      id: Date.now(),
-      text: file.name,
-      sent: true,
-      time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-      timestamp: new Date().toISOString(),
-      type: getFileType(file.type),
-      fileData: base64,
-      fileName: file.name,
-      fileSize: file.size,
-      status: "sent",
-    }
-
-    await sendMessage(message)
-    event.target.value = "" // Reset file input
-  } catch (error) {
-    console.error("Erreur upload fichier:", error)
-    showToast("Erreur lors de l'envoi du fichier", "error")
-  }
-}
-
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.readAsDataURL(file)
-    reader.onload = () => resolve(reader.result)
-    reader.onerror = (error) => reject(error)
-  })
-}
-
-function getFileType(mimeType) {
-  if (mimeType.startsWith("image/")) return "image"
-  if (mimeType.startsWith("video/")) return "video"
-  if (mimeType.startsWith("audio/")) return "audio"
-  return "document"
-}
-
-function filterChats(query) {
-  const chatItems = document.querySelectorAll(".chat-item")
-  chatItems.forEach((item) => {
-    const name = item.querySelector(".chat-name")?.textContent.toLowerCase() || ""
-    const message = item.querySelector(".chat-message")?.textContent.toLowerCase() || ""
-
-    if (name.includes(query) || message.includes(query)) {
-      item.style.display = "block"
-    } else {
-      item.style.display = "none"
-    }
-  })
-}
-
-function applyFilter(filter) {
-  const currentUser = getCurrentUser()
-  if (!currentUser) return
-
-  let filteredChats = chats.filter((chat) => chat.id !== currentUser.id)
-
-  switch (filter) {
-    case "unread":
-      filteredChats = filteredChats.filter((chat) => chat.unread > 0)
-      break
-    case "favorites":
-      filteredChats = filteredChats.filter((chat) => chat.isFavorite)
-      break
-    case "groups":
-      filteredChats = filteredChats.filter((chat) => chat.isGroup)
-      break
-    default:
-      // "all" - no additional filtering
-      break
-  }
-
-  renderFilteredChatList(filteredChats)
-}
-
-function renderFilteredChatList(filteredChats) {
-  const chatList = document.getElementById("chatList")
-  if (!chatList) return
-
-  chatList.innerHTML = ""
-
-  filteredChats.forEach((chat) => {
-    const chatItem = createChatItem(chat)
-    chatList.appendChild(chatItem)
-  })
-}
-
-function showProfile() {
-  const sidebar = document.getElementById("sidebar")
-  const profilePanel = document.getElementById("profilePanel")
-  const chatArea = document.getElementById("chatArea")
-
-  // Cacher la sidebar et la zone de chat
-  sidebar.style.display = "none"
-  chatArea.style.display = "none"
-
-  // Afficher le panneau de profil
-  profilePanel.style.display = "flex"
-
-  // Mettre à jour les informations du profil
-  updateProfileInfo()
-}
-
-function hideProfile() {
-  const sidebar = document.getElementById("sidebar")
-  const profilePanel = document.getElementById("profilePanel")
-  const chatArea = document.getElementById("chatArea")
-
-  // Cacher le panneau de profil
-  profilePanel.style.display = "none"
-
-  // Réafficher la sidebar
-  sidebar.style.display = "flex"
-
-  // Réafficher la zone de chat si un chat était ouvert
-  if (currentChat) {
-    chatArea.style.display = "flex"
-  }
-}
-
-function updateProfileInfo() {
-  const currentUser = getCurrentUser()
-  if (currentUser) {
-    const profileImage = document.getElementById("profileImage")
-    const profileName = document.getElementById("profileName")
-
-    if (profileImage) {
-      profileImage.src = currentUser.avatar
-      profileImage.alt = currentUser.name
-    }
-
-    if (profileName) {
-      profileName.textContent = currentUser.name
-    }
-  }
-}
-
-function updateUserAvatar() {
-  const currentUser = getCurrentUser()
-  const userAvatars = document.querySelectorAll(".user-avatar img")
-
-  if (currentUser && userAvatars.length > 0) {
-    userAvatars.forEach((avatar) => {
-      avatar.src = currentUser.avatar
-      avatar.alt = currentUser.name
-    })
-  }
-}
-
-function showWelcomeMessage() {
-  const messagesArea = document.getElementById("messagesArea")
-  if (messagesArea) {
-    messagesArea.innerHTML = `
-      <div class="flex items-center justify-center h-full text-gray-500">
-        <div class="text-center">
-          <div class="text-8xl mb-4 opacity-30">
-            <i class="fab fa-whatsapp text-green-500"></i>
+  createApp() {
+    const app = document.getElementById('app')
+    app.innerHTML = `
+      <div class="flex h-screen bg-gray-100">
+        <!-- Sidebar -->
+        <div class="w-1/3 bg-white border-r border-gray-200 flex flex-col">
+          <!-- Header -->
+          <div class="bg-gray-50 p-4 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white font-bold">
+                  W
+                </div>
+                <span class="font-medium text-gray-900">WhatsApp Web</span>
+              </div>
+            </div>
           </div>
-          <h2 class="text-3xl mb-4 font-light">WhatsApp Web</h2>
-          <p class="text-gray-400 mb-2">Sélectionnez une conversation pour commencer</p>
-          <div class="mt-8 flex justify-center">
-            <div class="flex items-center text-gray-500 text-sm">
-              <i class="fas fa-lock mr-2"></i>
-              <span>Vos messages sont chiffrés de bout en bout</span>
+
+          <!-- Search -->
+          <div class="p-3 border-b border-gray-200">
+            <div class="relative">
+              <input 
+                type="text" 
+                placeholder="Rechercher une discussion"
+                class="w-full pl-10 pr-4 py-2 bg-gray-100 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+              <svg class="absolute left-3 top-2.5 w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Chat List -->
+          <div id="chatList" class="flex-1 overflow-y-auto">
+            <!-- Les chats seront ajoutés ici -->
+          </div>
+        </div>
+
+        <!-- Chat Area -->
+        <div class="flex-1 flex flex-col">
+          <!-- Welcome Screen -->
+          <div id="welcomeScreen" class="flex-1 flex items-center justify-center bg-gray-50">
+            <div class="text-center text-gray-500">
+              <div class="w-32 h-32 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
+                <svg class="w-16 h-16 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7z" clip-rule="evenodd"/>
+                </svg>
+              </div>
+              <h3 class="text-xl font-medium text-gray-900 mb-2">WhatsApp Web</h3>
+              <p class="text-gray-500 max-w-md">Sélectionnez une discussion pour commencer à envoyer des messages</p>
+            </div>
+          </div>
+
+          <!-- Chat Interface (Hidden by default) -->
+          <div id="chatInterface" class="flex-1 flex-col hidden">
+            <!-- Chat Header -->
+            <div id="chatHeader" class="bg-gray-50 p-4 border-b border-gray-200">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                  <div id="chatAvatar" class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                    C
+                  </div>
+                  <div>
+                    <h3 id="chatName" class="font-medium text-gray-900">Contact</h3>
+                    <p class="text-sm text-gray-500">En ligne</p>
+                  </div>
+                </div>
+                <div class="flex space-x-2">
+                  <button class="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-200">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/>
+                    </svg>
+                  </button>
+                  <button class="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-200">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Messages Area -->
+            <div id="messagesArea" class="flex-1 p-4 space-y-4 overflow-y-auto bg-gray-50">
+              <!-- Messages will be added here -->
+            </div>
+
+            <!-- Message Input -->
+            <div class="p-4 bg-gray-50 border-t border-gray-200">
+              <div class="flex items-center space-x-3">
+                <button class="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-200">
+                  <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/>
+                  </svg>
+                </button>
+                <div class="flex-1 relative">
+                  <input 
+                    id="messageInput"
+                    type="text" 
+                    placeholder="Tapez un message"
+                    class="w-full px-4 py-2 bg-white border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                </div>
+                <button id="sendButton" class="p-2 text-green-600 hover:text-green-700 rounded-full hover:bg-green-100">
+                  <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
     `
   }
-}
 
-function renderChatList() {
-  const chatList = document.getElementById("chatList")
-  if (!chatList) return
-
-  const currentUser = getCurrentUser()
-  if (!currentUser) return
-
-  chatList.innerHTML = ""
-
-  // Filtrer les chats (exclure l'utilisateur actuel)
-  const filteredChats = chats.filter((chat) => chat.id !== currentUser.id)
-
-  // Trier par dernière activité
-  filteredChats.sort((a, b) => {
-    const timeA = new Date(a.lastMessageTime || a.time)
-    const timeB = new Date(b.lastMessageTime || b.time)
-    return timeB - timeA
-  })
-
-  filteredChats.forEach((chat) => {
-    const chatItem = createChatItem(chat)
-    chatList.appendChild(chatItem)
-  })
-}
-
-function createChatItem(chat) {
-  const chatItem = document.createElement("div")
-  chatItem.className =
-    "chat-item px-4 py-3 cursor-pointer hover:bg-[#202c33] transition-colors border-b border-gray-700"
-  chatItem.dataset.chatId = chat.id
-
-  const hasUnread = chat.unread > 0
-  const isOnline = chat.isOnline
-
-  chatItem.innerHTML = `
-    <div class="flex items-center space-x-3">
-      <div class="relative">
-        <img src="${chat.avatar}" alt="${chat.name}" class="w-12 h-12 rounded-full object-cover">
-        ${isOnline ? '<div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[#222e35]"></div>' : ""}
-      </div>
-      <div class="flex-1 min-w-0">
-        <div class="flex justify-between items-start">
-          <h3 class="chat-name font-medium text-white truncate ${hasUnread ? "font-semibold" : ""}">${chat.name}</h3>
-          <div class="flex flex-col items-end space-y-1">
-            <span class="text-xs ${hasUnread ? "text-green-400" : "text-gray-400"}">${chat.time}</span>
-            ${hasUnread ? `<span class="bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">${chat.unread}</span>` : ""}
-          </div>
-        </div>
-        <div class="mt-1">
-          <p class="chat-message text-sm ${hasUnread ? "text-white font-medium" : "text-gray-400"} truncate">${chat.lastMessage}</p>
-        </div>
-      </div>
-    </div>
-  `
-
-  chatItem.addEventListener("click", () => openChat(chat.id))
-
-  return chatItem
-}
-
-async function openChat(chatId) {
-  hideProfile()
-
-  currentChat = chats.find((chat) => chat.id === chatId)
-  window.currentChat = currentChat // Ajouter cette ligne
-
-  if (!currentChat) return
-
-  // Marquer comme lu
-  if (currentChat.unread > 0) {
-    currentChat.unread = 0
-    await updateChat(currentChat)
-  }
-
-  // Mise à jour visuelle
-  document.querySelectorAll(".chat-item").forEach((item) => {
-    item.classList.remove("bg-[#202c33]")
-  })
-  document.querySelector(`[data-chat-id="${chatId}"]`)?.classList.add("bg-[#202c33]")
-
-  // Responsive
-  if (isMobile()) {
-    document.getElementById("sidebar").style.display = "none"
-    document.getElementById("chatArea").style.display = "flex"
-  } else {
-    document.getElementById("chatArea").style.display = "flex"
-  }
-
-  showChatHeader()
-  await renderMessages()
-  showMessageInput()
-  renderChatList()
-}
-
-function showChatHeader() {
-  const chatHeader = document.getElementById("chatHeader")
-  const chatAvatar = document.getElementById("chatAvatar")
-  const chatName = document.getElementById("chatName")
-  const chatStatus = document.getElementById("chatStatus")
-
-  if (chatHeader && currentChat) {
-    chatHeader.style.display = "flex"
-    chatAvatar.innerHTML = `<img src="${currentChat.avatar}" alt="${currentChat.name}" class="w-10 h-10 rounded-full object-cover">`
-    chatName.textContent = currentChat.name
-    chatStatus.textContent = currentChat.isOnline ? "en ligne" : currentChat.status
-  }
-}
-
-async function renderMessages() {
-  const messagesArea = document.getElementById("messagesArea")
-  if (!messagesArea || !currentChat) return
-
-  try {
-    // Récupérer les messages depuis l'API
-    const messages = await getMessages(currentChat.id)
-    currentChat.messages = messages
-
-    messagesArea.innerHTML = ""
-
-    messages.forEach((message) => {
-      const messageElement = createMessageElement(message)
-      messagesArea.appendChild(messageElement)
-    })
-
-    messagesArea.scrollTop = messagesArea.scrollHeight
-  } catch (error) {
-    console.error("Erreur lors du rendu des messages:", error)
-    showToast("Erreur lors du chargement des messages", "error")
-  }
-}
-
-function createMessageElement(message) {
-  const currentUser = getCurrentUser()
-  const isSentByMe = message.senderId === currentUser.id || message.sent === true
-
-  const messageDiv = document.createElement("div")
-  messageDiv.className = `flex mb-4 ${isSentByMe ? "justify-end" : "justify-start"}`
-  messageDiv.dataset.messageId = message.id
-
-  let messageContent = ""
-
-  switch (message.type) {
-    case "image":
-      messageContent = `
-        <img src="${message.fileData}" alt="${message.fileName}" class="max-w-xs rounded-lg mb-2 cursor-pointer" onclick="openImageModal('${message.fileData}')">
-        <p class="text-sm">${message.text}</p>
-      `
-      break
-    case "video":
-      messageContent = `
-        <video src="${message.fileData}" controls class="max-w-xs rounded-lg mb-2">
-          Votre navigateur ne supporte pas la lecture vidéo.
-        </video>
-        <p class="text-sm">${message.text}</p>
-      `
-      break
-    case "audio":
-      messageContent = `
-        <audio src="${message.fileData}" controls class="mb-2">
-          Votre navigateur ne supporte pas la lecture audio.
-        </audio>
-        <p class="text-sm">${message.text}</p>
-      `
-      break
-    case "document":
-      messageContent = `
-        <div class="flex items-center space-x-2 mb-2 p-2 bg-gray-700 rounded">
-          <i class="fas fa-file text-blue-400"></i>
-          <div>
-            <p class="text-sm font-medium">${message.fileName}</p>
-            <p class="text-xs text-gray-400">${formatFileSize(message.fileSize)}</p>
-          </div>
-        </div>
-      `
-      break
-    case "voice":
-      messageContent = `
-        <div class="voice-message flex items-center gap-3 p-3 min-w-[200px]">
-          <button class="play-button w-10 h-10 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center text-white transition-colors">
-            <i class="fas fa-play text-sm"></i>
-          </button>
-          <div class="voice-content flex-1">
-            <div class="voice-waveform flex items-center gap-1 h-6 mb-1">
-              ${Array(25)
-                .fill()
-                .map(
-                  (_, i) => `
-                <div class="waveform-bar bg-gray-400 rounded-full transition-all duration-200" 
-                     style="width: 2px; height: ${Math.random() * 16 + 4}px;"></div>
-              `,
-                )
-                .join("")}
-            </div>
-            <div class="flex justify-between items-center">
-              <span class="duration text-xs text-gray-300">0:05</span>
-            </div>
-          </div>
-        </div>
-      `
-
-      // Ajouter la gestion audio après le rendu
-      setTimeout(() => {
-        const messageEl = document.querySelector(`[data-message-id="${message.id}"]`)
-        if (messageEl) {
-          const playButton = messageEl.querySelector(".play-button")
-          const waveformBars = messageEl.querySelectorAll(".waveform-bar")
-          const duration = messageEl.querySelector(".duration")
-          let isPlaying = false
-          let animationInterval = null
-          let audio = null
-
-          // Fonction pour créer l'audio à partir des données base64
-          function createAudioFromBase64() {
-            if (!message.fileData) {
-              console.error("Pas de données audio disponibles")
-              return null
-            }
-
-            try {
-              // Créer un nouvel élément audio
-              audio = new Audio()
-              audio.src = message.fileData
-              audio.preload = "metadata"
-
-              // Gérer les erreurs de chargement
-              audio.onerror = (e) => {
-                console.error("Erreur chargement audio:", e)
-                duration.textContent = "Erreur"
-              }
-
-              // Quand les métadonnées sont chargées
-              audio.onloadedmetadata = () => {
-                if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-                  duration.textContent = formatTime(audio.duration)
-                } else {
-                  // Durée par défaut si impossible à déterminer
-                  duration.textContent = "0:05"
-                }
-              }
-
-              // Gestion de la fin de lecture
-              audio.onended = () => {
-                isPlaying = false
-                playButton.innerHTML = '<i class="fas fa-play text-sm"></i>'
-                clearInterval(animationInterval)
-                waveformBars.forEach((bar) => {
-                  bar.style.backgroundColor = "#9ca3af"
-                })
-              }
-
-              // Gestion des erreurs de lecture
-              audio.onpause = () => {
-                isPlaying = false
-                playButton.innerHTML = '<i class="fas fa-play text-sm"></i>'
-                clearInterval(animationInterval)
-              }
-
-              return audio
-            } catch (error) {
-              console.error("Erreur création audio:", error)
-              return null
-            }
-          }
-
-          playButton.onclick = async () => {
-            try {
-              if (!audio) {
-                audio = createAudioFromBase64()
-                if (!audio) {
-                  showToast("Impossible de lire le message vocal", "error")
-                  return
-                }
-              }
-
-              if (isPlaying) {
-                audio.pause()
-                playButton.innerHTML = '<i class="fas fa-play text-sm"></i>'
-                clearInterval(animationInterval)
-                // Reset waveform
-                waveformBars.forEach((bar) => {
-                  bar.style.backgroundColor = "#9ca3af"
-                })
-                isPlaying = false
-              } else {
-                // Essayer de jouer l'audio
-                try {
-                  await audio.play()
-                  playButton.innerHTML = '<i class="fas fa-pause text-sm"></i>'
-                  isPlaying = true
-
-                  // Animer les barres
-                  animationInterval = setInterval(() => {
-                    waveformBars.forEach((bar) => {
-                      const height = Math.random() * 16 + 4
-                      bar.style.height = `${height}px`
-                      bar.style.backgroundColor = "#10b981"
-                    })
-                  }, 100)
-                } catch (playError) {
-                  console.error("Erreur lecture:", playError)
-                  showToast("Erreur de lecture audio", "error")
-                  playButton.innerHTML = '<i class="fas fa-play text-sm"></i>'
-                  isPlaying = false
-                }
-              }
-            } catch (error) {
-              console.error("Erreur gestion lecture:", error)
-              showToast("Erreur de lecture audio", "error")
-              playButton.innerHTML = '<i class="fas fa-play text-sm"></i>'
-              isPlaying = false
-            }
-          }
-
-          // Initialiser l'audio
-          createAudioFromBase64()
-        }
-      }, 100)
-      break
-    default:
-      messageContent = `<p class="text-sm">${message.text}</p>`
-  }
-
-  messageDiv.innerHTML = `
-  <div class="max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-    isSentByMe ? "bg-[#005c4b] text-white" : "bg-[#202c33] text-white"
-  } shadow-md">
-    ${messageContent}
-    <div class="flex justify-end items-center mt-1 space-x-1">
-      <span class="text-xs text-gray-300">${message.time}</span>
-      ${isSentByMe ? `<i class="fas fa-check-double text-xs ${message.status === "read" ? "text-blue-400" : "text-gray-400"}"></i>` : ""}
-    </div>
-  </div>
-`
-
-  return messageDiv
-}
-
-function formatFileSize(bytes) {
-  if (bytes === 0) return "0 Bytes"
-  const k = 1024
-  const sizes = ["Bytes", "KB", "MB", "GB"]
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
-}
-
-function showMessageInput() {
-  const messageInput = document.getElementById("messageInput")
-  if (messageInput) {
-    messageInput.style.display = "flex"
-  }
-}
-
-function setupMessageInput() {
-  const messageText = document.getElementById("messageText")
-  const sendButton = document.getElementById("sendButton")
-  const voiceBtn = document.getElementById("voiceBtn")
-
-  if (!messageText || !sendButton) return
-
-  async function sendTextMessage() {
-    const text = messageText.value.trim()
-    if (!text || !currentChat) return
-
-    try {
-      const currentUser = getCurrentUser()
-      if (!currentUser) return
-
-      const message = {
-        id: Date.now(),
-        senderId: currentUser.id,
-        receiverId: currentChat.id,
-        text: text,
-        sent: true,
-        time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
-        timestamp: new Date().toISOString(),
-        type: "text",
-        status: "sent",
+  loadMockData() {
+    this.chats = [
+      {
+        id: 1,
+        name: "Abdallah",
+        lastMessage: "Salut ! Comment ça va ?",
+        time: "14:30",
+        unread: 2,
+        avatar: "A",
+        messages: [
+          { id: 1, text: "Salut ! Comment ça va ?", time: "14:30", sent: false },
+          { id: 2, text: "Ça va bien merci ! Et toi ?", time: "14:32", sent: true }
+        ]
+      },
+      {
+        id: 2,
+        name: "Ousmane Marra",
+        lastMessage: "On se voit demain ?",
+        time: "13:45",
+        unread: 0,
+        avatar: "O",
+        messages: [
+          { id: 1, text: "On se voit demain ?", time: "13:45", sent: false },
+          { id: 2, text: "Oui, à quelle heure ?", time: "13:47", sent: true }
+        ]
+      },
+      {
+        id: 3,
+        name: "Zeynabe Ba",
+        lastMessage: "Merci pour l'info !",
+        time: "12:20",
+        unread: 1,
+        avatar: "Z",
+        messages: [
+          { id: 1, text: "Tu as les documents ?", time: "12:15", sent: true },
+          { id: 2, text: "Merci pour l'info !", time: "12:20", sent: false }
+        ]
       }
-
-      // Vider le champ de message immédiatement
-      messageText.value = ""
-
-      // Ajouter le message localement pour l'affichage immédiat
-      currentChat.messages = currentChat.messages || []
-      currentChat.messages.push(message)
-      currentChat.lastMessage = text
-      currentChat.time = message.time
-      currentChat.lastMessageTime = message.timestamp
-
-      // Envoyer au serveur
-      await handleSendMessage(currentUser.id, currentChat.id, message)
-    } catch (error) {
-      console.error("Erreur envoi message:", error)
-      showToast("Erreur lors de l'envoi", "error")
-    }
+    ]
   }
 
-  sendButton.addEventListener("click", sendTextMessage)
-  messageText.addEventListener("keypress", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      sendTextMessage()
-    }
-  })
-
-  // Voice message
-  if (voiceBtn) {
-    voiceBtn.addEventListener("click", startVoiceRecording)
-  }
-}
-
-async function sendMessage(message) {
-  if (!currentChat) return
-
-  try {
-    currentChat.messages.push(message)
-    currentChat.lastMessage = message.type === "text" ? message.text : `📎 ${message.fileName || "Fichier"}`
-    currentChat.time = message.time
-    currentChat.lastMessageTime = message.timestamp
-
-    await addMessage(currentChat.id, message)
-    await updateChat(currentChat)
-
-    renderMessages()
-    renderChatList()
-  } catch (error) {
-    console.error("Erreur envoi message:", error)
-    showToast("Erreur lors de l'envoi", "error")
-  }
-}
-
-function handleBackButton() {
-  if (isMobile()) {
-    document.getElementById("sidebar").style.display = "flex"
-    document.getElementById("chatArea").style.display = "none"
+  render() {
+    this.renderChatList()
+    this.setupEventListeners()
   }
 
-  currentChat = null
-  window.currentChat = null // Ajouter cette ligne
-  document.getElementById("chatHeader").style.display = "none"
-  document.getElementById("messageInput").style.display = "none"
-  showWelcomeMessage()
-}
+  renderChatList() {
+    const chatList = document.getElementById('chatList')
+    chatList.innerHTML = this.chats.map(chat => `
+      <div class="flex items-center p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100" data-chat-id="${chat.id}">
+        <div class="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold mr-3">
+          ${chat.avatar}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between">
+            <h3 class="font-medium text-gray-900 truncate">${chat.name}</h3>
+            <span class="text-xs text-gray-500">${chat.time}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <p class="text-sm text-gray-500 truncate">${chat.lastMessage}</p>
+            ${chat.unread > 0 ? `<span class="bg-green-500 text-white text-xs rounded-full px-2 py-1 ml-2">${chat.unread}</span>` : ''}
+          </div>
+        </div>
+      </div>
+    `).join('')
+  }
 
-function setupNavigation() {
-  const navItems = document.querySelectorAll(".nav-item")
-  navItems.forEach((item) => {
-    item.addEventListener("click", () => {
-      const view = item.dataset.view
-      console.log("Navigation vers:", view)
-
-      // Remove active class from all nav items
-      navItems.forEach((nav) => nav.classList.remove("active"))
-
-      // Add active class to clicked item
-      item.classList.add("active")
-
-      // Handle navigation
-      switch (view) {
-        case "chats":
-          // Already handled by default
-          break
-        case "status":
-          showToast("Fonctionnalité Statuts bientôt disponible", "info")
-          break
-        case "communities":
-          showToast("Fonctionnalité Communautés bientôt disponible", "info")
-          break
-        case "settings":
-          showToast("Fonctionnalité Paramètres bientôt disponible", "info")
-          break
+  setupEventListeners() {
+    // Chat selection
+    document.getElementById('chatList').addEventListener('click', (e) => {
+      const chatItem = e.target.closest('[data-chat-id]')
+      if (chatItem) {
+        const chatId = parseInt(chatItem.dataset.chatId)
+        this.openChat(chatId)
       }
     })
-  })
-}
 
-function handleResize() {
-  if (!isMobile() && currentChat) {
-    document.getElementById("sidebar").style.display = "flex"
-    document.getElementById("chatArea").style.display = "flex"
-  }
-}
-
-function isMobile() {
-  return window.innerWidth < 768
-}
-
-// Voice recording functions
-let mediaRecorder = null
-let audioChunks = []
-
-async function startVoiceRecording() {
-  try {
-    if (!currentChat) {
-      showToast("Sélectionnez une conversation d'abord", "error")
-      return
-    }
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    mediaRecorder = new MediaRecorder(stream)
-    audioChunks = []
-
-    mediaRecorder.ondataavailable = (event) => {
-      audioChunks.push(event.data)
-    }
-
-    mediaRecorder.onstop = async () => {
-      const audioBlob = new Blob(audioChunks, { type: "audio/mp3" })
-      await handleVoiceMessage(audioBlob, currentChat)
-      stream.getTracks().forEach((track) => track.stop())
-    }
-
-    mediaRecorder.start()
-    showToast("Enregistrement en cours... Cliquez à nouveau pour arrêter", "info")
-
-    const voiceBtn = document.getElementById("voiceBtn")
-    voiceBtn.innerHTML = '<i class="fas fa-stop text-xl text-red-500"></i>'
-    voiceBtn.onclick = stopVoiceRecording
-  } catch (error) {
-    console.error("Erreur enregistrement vocal:", error)
-    showToast("Impossible d'accéder au microphone", "error")
-  }
-}
-
-function stopVoiceRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop()
-
-    // Reset button
-    const voiceBtn = document.getElementById("voiceBtn")
-    voiceBtn.innerHTML = '<i class="fas fa-microphone text-xl"></i>'
-    voiceBtn.onclick = startVoiceRecording
-
-    showToast("Message vocal envoyé", "success")
-  }
-}
-
-function createVoiceMessage(audioBlob, currentUser, isSent = true) {
-  const container = document.createElement("div")
-  container.className = `voice-message-container ${isSent ? "sent" : "received"}`
-
-  const audioUrl = URL.createObjectURL(audioBlob)
-  const audio = new Audio(audioUrl)
-
-  container.innerHTML = `
-    <div class="voice-message">
-      ${
-        !isSent
-          ? `
-        <div class="voice-avatar">
-          <img src="${currentChat.avatar}" alt="Avatar" />
-        </div>
-      `
-          : ""
-      }
-      <div class="voice-content">
-        <div class="voice-controls">
-          <button class="voice-play-button">
-            <i class="fas fa-play"></i>
-          </button>
-          <div class="voice-progress">
-            <div class="voice-progress-bar" style="width: 0%"></div>
-          </div>
-          <span class="voice-time">0:00</span>
-        </div>
-        <div class="voice-waveform">
-          ${Array(20)
-            .fill()
-            .map(
-              () => `
-            <div class="voice-waveform-bar"></div>
-          `,
-            )
-            .join("")}
-        </div>
-      </div>
-    </div>
-  `
-
-  const playButton = container.querySelector(".voice-play-button")
-  const progressBar = container.querySelector(".voice-progress-bar")
-  const timeDisplay = container.querySelector(".voice-time")
-
-  let isPlaying = false
-
-  playButton.addEventListener("click", () => {
-    if (isPlaying) {
-      audio.pause()
-      playButton.innerHTML = '<i class="fas fa-play"></i>'
-    } else {
-      audio.play()
-      playButton.innerHTML = '<i class="fas fa-pause"></i>'
-    }
-    isPlaying = !isPlaying
-  })
-
-  audio.addEventListener("timeupdate", () => {
-    const progress = (audio.currentTime / audio.duration) * 100
-    progressBar.style.width = `${progress}%`
-    timeDisplay.textContent = formatTime(audio.currentTime)
-  })
-
-  audio.addEventListener("ended", () => {
-    isPlaying = false
-    playButton.innerHTML = '<i class="fas fa-play"></i>'
-    progressBar.style.width = "0%"
-  })
-
-  return container
-}
-
-function formatTime(seconds) {
-  if (!seconds || !isFinite(seconds) || isNaN(seconds)) {
-    return "0:05" // Durée par défaut
-  }
-
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = Math.floor(seconds % 60)
-  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`
-}
-
-async function handleVoiceMessage(audioBlob, currentChat) {
-  try {
-    const currentUser = getCurrentUser()
-    if (!currentUser || !currentChat) return
-
-    // Convertir en base64 pour le stockage
-    const base64Audio = await new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve(reader.result)
-      reader.readAsDataURL(audioBlob)
+    // Send message
+    document.getElementById('sendButton').addEventListener('click', () => {
+      this.sendMessage()
     })
 
-    const message = {
-      id: Date.now(),
-      senderId: currentUser.id,
-      receiverId: currentChat.id,
-      text: "Message vocal",
-      sent: true, // Important: marquer comme envoyé
-      time: new Date().toLocaleTimeString("fr-FR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      timestamp: new Date().toISOString(),
-      type: "voice",
-      fileData: base64Audio,
-      status: "sent",
-    }
-
-    // Envoyer le message
-    await sendMessage(message)
-  } catch (error) {
-    console.error("Erreur envoi message vocal:", error)
-    showToast("Erreur lors de l'envoi du message vocal", "error")
-  }
-}
-
-// Ajout de la fonction pour créer l'élément de message vocal
-function createVoiceMessageElement(message) {
-  const container = document.createElement("div")
-  container.className = `message-bubble ${message.sent ? "sent" : "received"}`
-
-  container.innerHTML = `
-    <div class="voice-message">
-      <button class="play-button">
-        <i class="fas fa-play"></i>
-      </button>
-      <div class="voice-waveform">
-        <div class="waveform-progress"></div>
-      </div>
-      <span class="duration">0:00</span>
-      <span class="time">${message.time}</span>
-      ${message.sent ? `<i class="fas fa-check-double message-status"></i>` : ""}
-    </div>
-  `
-
-  // Gérer la lecture audio
-  const audio = new Audio(message.audioUrl)
-  const playButton = container.querySelector(".play-button")
-  const waveform = container.querySelector(".waveform-progress")
-  const duration = container.querySelector(".duration")
-
-  playButton.addEventListener("click", () => {
-    if (audio.paused) {
-      audio.play()
-      playButton.innerHTML = '<i class="fas fa-pause"></i>'
-    } else {
-      audio.pause()
-      playButton.innerHTML = '<i class="fas fa-play"></i>'
-    }
-  })
-
-  audio.addEventListener("timeupdate", () => {
-    const progress = (audio.currentTime / audio.duration) * 100
-    waveform.style.width = `${progress}%`
-    duration.textContent = formatTime(audio.currentTime)
-  })
-
-  audio.addEventListener("ended", () => {
-    playButton.innerHTML = '<i class="fas fa-play"></i>'
-    waveform.style.width = "0%"
-  })
-
-  return container
-}
-
-function setupVoiceRecording() {
-  const voiceBtn = document.getElementById("voiceBtn")
-  if (voiceBtn) {
-    voiceBtn.addEventListener("click", () => {
-      if (mediaRecorder && mediaRecorder.state === "recording") {
-        stopVoiceRecording()
-      } else {
-        startVoiceRecording()
+    document.getElementById('messageInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.sendMessage()
       }
     })
   }
-}
 
-// Ajouter ces fonctions après les imports et avant le reste du code
-
-function handleNewMessage(message) {
-  const currentUser = getCurrentUser()
-  if (!currentUser) return
-
-  try {
-    // Trouver le chat concerné
-    const chat = chats.find(c => c.id === message.senderId || c.id === message.receiverId)
-    if (!chat) return
-
-    // Ajouter le message à la conversation
-    chat.messages = chat.messages || []
-    chat.messages.push(message)
-    chat.lastMessage = message.text
-    chat.time = message.time
-    chat.lastMessageTime = message.timestamp
-
-    // Si ce n'est pas un message envoyé par l'utilisateur actuel
-    if (message.senderId !== currentUser.id) {
-      // Incrémenter le compteur de messages non lus si la conversation n'est pas ouverte
-      if (!currentChat || currentChat.id !== chat.id) {
-        chat.unread = (chat.unread || 0) + 1
-        showNotification(chat.name, message.text)
-      }
-    }
-
-    // Mettre à jour l'interface
-    if (currentChat && (currentChat.id === chat.id || currentChat.id === message.senderId)) {
-      renderMessages()
-    }
-    renderChatList()
-
-  } catch (error) {
-    console.error("Erreur lors du traitement du nouveau message:", error)
-  }
-}
-
-function handleUserStatusUpdate(userId, isOnline) {
-  try {
-    // Mettre à jour le statut de l'utilisateur dans la liste des chats
-    const chat = chats.find((c) => c.id === userId)
-    if (chat) {
-      chat.isOnline = isOnline
-      chat.status = isOnline ? "en ligne" : "hors ligne"
-      renderChatList()
-
-      // Mettre à jour le header du chat si c'est le chat actuel
-      if (currentChat && currentChat.id === userId) {
-        const chatStatus = document.getElementById("chatStatus")
-        if (chatStatus) {
-          chatStatus.textContent = chat.status
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Erreur mise à jour statut:", error)
-  }
-}
-
-// Modification de la fonction startAutoRefresh
-function startAutoRefresh() {
-  // Arrêter l'ancien intervalle s'il existe
-  if (window.refreshInterval) {
-    clearInterval(window.refreshInterval)
-  }
-
-  // Démarrer un nouvel intervalle
-  window.refreshInterval = setInterval(async () => {
-    try {
-      // Récupérer les nouveaux messages
-      if (currentChat) {
-        const messages = await getMessages(currentChat.id)
-        if (JSON.stringify(currentChat.messages) !== JSON.stringify(messages)) {
-          currentChat.messages = messages
-          renderMessages()
-        }
-      }
-
-      // Mettre à jour la liste des chats
-      const updatedChats = await getChats()
-      if (JSON.stringify(chats) !== JSON.stringify(updatedChats)) {
-        chats = updatedChats
-        renderChatList()
-      }
-    } catch (error) {
-      console.error("Erreur rafraîchissement:", error)
-    }
-  }, 2000) // Toutes les 2 secondes
-}
-
-// Rendre les fonctions accessibles globalement
-window.renderMessages = renderMessages
-window.renderChatList = renderChatList
-// Ajouter cette fonction après les autres fonctions de message
-window.sendVoiceMessage = async function(message) {
-  if (!currentChat) return
-
-  try {
-    const currentUser = getCurrentUser()
-    if (!currentUser) return
-
-    // Ajouter le message localement pour l'affichage immédiat
-    currentChat.messages = currentChat.messages || []
-    currentChat.messages.push(message)
-    currentChat.lastMessage = "🎤 Message vocal"
-    currentChat.time = message.time
-    currentChat.lastMessageTime = message.timestamp
-
-    // Rafraîchir l'interface immédiatement
-    renderMessages()
-    renderChatList()
-
-    // Envoyer au serveur (asynchrone)
-    await handleSendMessage(currentUser.id, currentChat.id, message)
+  openChat(chatId) {
+    this.currentChat = this.chats.find(chat => chat.id === chatId)
     
-  } catch (error) {
-    console.error("Erreur envoi message vocal:", error)
-    showToast("Erreur lors de l'envoi du message vocal", "error")
+    // Hide welcome screen
+    document.getElementById('welcomeScreen').classList.add('hidden')
+    
+    // Show chat interface
+    document.getElementById('chatInterface').classList.remove('hidden')
+    document.getElementById('chatInterface').classList.add('flex')
+    
+    // Update chat header
+    document.getElementById('chatName').textContent = this.currentChat.name
+    document.getElementById('chatAvatar').textContent = this.currentChat.avatar
+    
+    // Render messages
+    this.renderMessages()
+  }
+
+  renderMessages() {
+    const messagesArea = document.getElementById('messagesArea')
+    messagesArea.innerHTML = this.currentChat.messages.map(message => `
+      <div class="flex ${message.sent ? 'justify-end' : 'justify-start'}">
+        <div class="${message.sent ? 'bg-green-500 text-white' : 'bg-white text-gray-800'} p-3 rounded-lg shadow-sm max-w-xs">
+          <p>${message.text}</p>
+          <span class="text-xs ${message.sent ? 'text-green-100' : 'text-gray-500'} mt-1 block">${message.time}</span>
+        </div>
+      </div>
+    `).join('')
+    
+    // Scroll to bottom
+    messagesArea.scrollTop = messagesArea.scrollHeight
+  }
+
+  sendMessage() {
+    const input = document.getElementById('messageInput')
+    const text = input.value.trim()
+    
+    if (text && this.currentChat) {
+      const newMessage = {
+        id: Date.now(),
+        text: text,
+        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        sent: true
+      }
+      
+      this.currentChat.messages.push(newMessage)
+      this.currentChat.lastMessage = text
+      this.currentChat.time = newMessage.time
+      
+      input.value = ''
+      this.renderMessages()
+      this.renderChatList()
+    }
   }
 }
+
+// Initialize app when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+  window.app = new WhatsAppClone()
+})
