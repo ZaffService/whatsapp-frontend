@@ -1,6 +1,7 @@
 import { defineConfig } from "vite"
 
 export default defineConfig({
+  base: "./",
   server: {
     host: true,
     port: 5173,
@@ -10,7 +11,12 @@ export default defineConfig({
   build: {
     outDir: "dist",
     assetsDir: "assets",
-    sourcemap: true,
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      }
+    }
   },
   optimizeDeps: {
     include: [],
